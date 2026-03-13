@@ -25,12 +25,14 @@ import com.agrinepal.service.FarmPlotService;
 import com.agrinepal.service.FarmerService;
 import com.agrinepal.service.MarketPriceService;
 import com.agrinepal.service.WeatherAlertService;
+import com.agrinepal.util.ValidationUtil;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
@@ -157,6 +159,8 @@ public class App extends Application {
     private Tab createDashboardTab() {
         TextArea summary = new TextArea();
         summary.setEditable(false);
+        Label help = sectionHelp(
+                "Overview: shows quick system totals and live alert highlights. How to use: click Refresh Dashboard after adding or updating records.");
 
         Button refresh = new Button("Refresh Dashboard");
         refresh.setOnAction(e -> {
@@ -174,7 +178,7 @@ public class App extends Application {
         });
         refresh.fire();
 
-        VBox box = new VBox(10, refresh, summary);
+        VBox box = new VBox(10, help, refresh, summary);
         box.setPadding(new Insets(10));
         VBox.setVgrow(summary, Priority.ALWAYS);
 
@@ -193,6 +197,8 @@ public class App extends Application {
         TextField farmerId = new TextField();
 
         ListView<String> users = new ListView<>();
+        Label help = sectionHelp(
+                "Use this tab to create login accounts. Field help: Username is unique login ID, Full Name is display name, Password is sign-in secret, Role controls permissions, Farmer ID is required only for FARMER role.");
         Runnable reload = () -> users.getItems().setAll(authService.allUsers().stream()
                 .map(u -> u.getId() + " | " + u.getUsername() + " | " + u.getRole())
                 .toList());
@@ -217,7 +223,7 @@ public class App extends Application {
         addRow(form, 3, "Role", role);
         addRow(form, 4, "Farmer ID (for farmer role)", farmerId);
 
-        VBox left = new VBox(10, form, add);
+        VBox left = new VBox(10, help, form, add);
         HBox body = new HBox(10, left, users);
         VBox.setVgrow(users, Priority.ALWAYS);
         HBox.setHgrow(users, Priority.ALWAYS);
@@ -242,6 +248,8 @@ public class App extends Application {
         TextField search = new TextField();
         search.setPromptText("Search by ID/Name/Crop");
         ListView<String> list = new ListView<>();
+        Label help = sectionHelp(
+                "Use this tab to manage farmer profiles. Field help: Name is farmer full name, District is farmer location, Primary Crop is the main crop, Phone is contact number, Status controls active/inactive participation.");
 
         Runnable reload = () -> {
             List<Farmer> data = farmerService.search(search.getText(), null, null, null);
@@ -306,7 +314,7 @@ public class App extends Application {
         addRow(form, 3, "Phone", phone);
         addRow(form, 4, "Status", active);
 
-        VBox left = new VBox(10, form, add, update, delete, search);
+        VBox left = new VBox(10, help, form, add, update, delete, search);
         HBox body = new HBox(10, left, list);
         HBox.setHgrow(list, Priority.ALWAYS);
         body.setPadding(new Insets(10));
@@ -317,7 +325,7 @@ public class App extends Application {
     }
 
     private Tab createPlotsTab() {
-        TextField farmerId = new TextField();
+        ComboBox<String> farmer = new ComboBox<>();
         TextField location = new TextField();
         TextField size = new TextField();
         ComboBox<String> unit = new ComboBox<>();
@@ -329,6 +337,23 @@ public class App extends Application {
         ComboBox<String> irrigated = new ComboBox<>();
         irrigated.getItems().addAll("YES", "NO");
         irrigated.setValue("YES");
+        Label help = sectionHelp(
+                "Use this tab to register farm plots. Field help: Farmer selects owner by ID and name, Location is a short site note, Size is numeric land amount, Unit is ROPANI/BIGHA, Soil and Irrigated describe plot conditions.");
+
+        Runnable reloadFarmers = () -> farmer.getItems().setAll(farmerService.all().stream()
+                .map(f -> f.getId() + " | " + f.getName())
+                .toList());
+
+        reloadFarmers.run();
+        if (currentUser.getRole() == UserRole.FARMER && currentUser instanceof FarmerUser fu) {
+            String option = farmer.getItems().stream().filter(v -> v.startsWith(fu.getFarmerId() + " |"))
+                    .findFirst().orElse(fu.getFarmerId() + " | Linked Farmer");
+            if (!farmer.getItems().contains(option)) {
+                farmer.getItems().add(0, option);
+            }
+            farmer.setValue(option);
+            farmer.setDisable(true);
+        }
 
         ListView<String> list = new ListView<>();
         Runnable reload = () -> {
@@ -345,7 +370,7 @@ public class App extends Application {
         Button add = new Button("Add Plot");
         add.setOnAction(e -> {
             try {
-                String effectiveFarmerId = farmerId.getText();
+                String effectiveFarmerId = parseSelectedId(farmer.getValue(), "Farmer");
                 if (currentUser.getRole() == UserRole.FARMER && currentUser instanceof FarmerUser fu) {
                     effectiveFarmerId = fu.getFarmerId();
                 }
@@ -371,14 +396,14 @@ public class App extends Application {
         reload.run();
 
         GridPane form = basicForm();
-        addRow(form, 0, "Farmer ID", farmerId);
+        addRow(form, 0, "Farmer (ID | Name)", farmer);
         addRow(form, 1, "Location", location);
         addRow(form, 2, "Size", size);
         addRow(form, 3, "Unit", unit);
         addRow(form, 4, "Soil", soilType);
         addRow(form, 5, "Irrigated", irrigated);
 
-        VBox left = new VBox(10, form, add, delete);
+        VBox left = new VBox(10, help, form, add, delete);
         HBox body = new HBox(10, left, list);
         HBox.setHgrow(list, Priority.ALWAYS);
         body.setPadding(new Insets(10));
@@ -403,6 +428,8 @@ public class App extends Application {
         s2.getItems().addAll(Season.values());
         s3.getItems().addAll(Season.values());
         s1.setValue(Season.BASANTA);
+        Label help = sectionHelp(
+                "Use this tab to manage standard crop master records. Field help: Crop Name is unique crop label, Duration is growth days, Water Need is irrigation requirement, Recommended Soil and Seasons define suitability guidance.");
 
         ListView<String> list = new ListView<>();
         Runnable reload = () -> list.getItems().setAll(cropService.all().stream()
@@ -444,7 +471,7 @@ public class App extends Application {
         addRow(form, 5, "Season 2", s2);
         addRow(form, 6, "Season 3", s3);
 
-        VBox left = new VBox(10, form, add, delete);
+        VBox left = new VBox(10, help, form, add, delete);
         HBox body = new HBox(10, left, list);
         HBox.setHgrow(list, Priority.ALWAYS);
         body.setPadding(new Insets(10));
@@ -455,12 +482,55 @@ public class App extends Application {
     }
 
     private Tab createCropPlansTab() {
-        TextField farmerId = new TextField();
-        TextField plotId = new TextField();
-        TextField cropId = new TextField();
+        ComboBox<String> farmer = new ComboBox<>();
+        ComboBox<String> plot = new ComboBox<>();
+        ComboBox<String> crop = new ComboBox<>();
         ComboBox<Season> season = new ComboBox<>();
         season.getItems().addAll(Season.values());
         season.setValue(Season.BASANTA);
+        Label help = sectionHelp(
+                "How to use: choose farmer first, then pick one of that farmer's available plots, then choose crop by ID and name and season. Field help: Farmer identifies plan owner, Plot is selected farm plot, Crop is standard crop record, Season is planting season.");
+
+        Runnable reloadFarmers = () -> farmer.getItems().setAll(farmerService.all().stream()
+                .map(f -> f.getId() + " | " + f.getName())
+                .toList());
+        Runnable reloadCrops = () -> crop.getItems().setAll(cropService.all().stream()
+                .map(c -> c.getId() + " | " + c.getName())
+                .toList());
+        Runnable reloadPlotsForFarmer = () -> {
+            String selectedFarmerId = null;
+            if (currentUser.getRole() == UserRole.FARMER && currentUser instanceof FarmerUser fu) {
+                selectedFarmerId = fu.getFarmerId();
+            } else if (farmer.getValue() != null) {
+                selectedFarmerId = parseSelectedId(farmer.getValue(), "Farmer");
+            }
+
+            if (selectedFarmerId == null) {
+                plot.getItems().clear();
+                return;
+            }
+
+            plot.getItems().setAll(farmPlotService.byFarmer(selectedFarmerId).stream()
+                    .map(p -> p.getId() + " | " + p.getLocationNote() + " | " + p.getSize() + " " + p.getUnit())
+                    .toList());
+        };
+
+        reloadFarmers.run();
+        reloadCrops.run();
+        if (currentUser.getRole() == UserRole.FARMER && currentUser instanceof FarmerUser fu) {
+            String option = farmer.getItems().stream().filter(v -> v.startsWith(fu.getFarmerId() + " |"))
+                    .findFirst().orElse(fu.getFarmerId() + " | Linked Farmer");
+            if (!farmer.getItems().contains(option)) {
+                farmer.getItems().add(0, option);
+            }
+            farmer.setValue(option);
+            farmer.setDisable(true);
+        }
+        farmer.valueProperty().addListener((obs, oldV, newV) -> {
+            plot.setValue(null);
+            reloadPlotsForFarmer.run();
+        });
+        reloadPlotsForFarmer.run();
 
         ListView<String> list = new ListView<>();
         TextArea advisoryArea = new TextArea();
@@ -480,11 +550,13 @@ public class App extends Application {
         Button add = new Button("Create Plan");
         add.setOnAction(e -> {
             try {
-                String effectiveFarmerId = farmerId.getText();
+                String effectiveFarmerId = parseSelectedId(farmer.getValue(), "Farmer");
                 if (currentUser.getRole() == UserRole.FARMER && currentUser instanceof FarmerUser fu) {
                     effectiveFarmerId = fu.getFarmerId();
                 }
-                CropPlan plan = cropPlanService.create(effectiveFarmerId, plotId.getText(), cropId.getText(),
+                CropPlan plan = cropPlanService.create(effectiveFarmerId,
+                        parseSelectedId(plot.getValue(), "Plot"),
+                        parseSelectedId(crop.getValue(), "Crop"),
                         season.getValue(), LocalDate.now());
                 auditService.log(currentUser.getUsername(), "CREATE_PLAN", "Created crop plan: " + plan.getId());
                 reload.run();
@@ -505,7 +577,9 @@ public class App extends Application {
         Button advisory = new Button("Generate Advisory");
         advisory.setOnAction(e -> {
             try {
-                CropAdvisoryDTO dto = cropPlanService.advisory(season.getValue(), cropId.getText(), plotId.getText());
+                CropAdvisoryDTO dto = cropPlanService.advisory(season.getValue(),
+                        parseSelectedId(crop.getValue(), "Crop"),
+                        parseSelectedId(plot.getValue(), "Plot"));
                 advisoryArea.setText("Season: " + dto.getSeason()
                         + "\nCrop: " + dto.getCropName()
                         + "\nSuitability Score: " + dto.getSuitabilityScore() + "/100"
@@ -520,12 +594,12 @@ public class App extends Application {
         reload.run();
 
         GridPane form = basicForm();
-        addRow(form, 0, "Farmer ID", farmerId);
-        addRow(form, 1, "Plot ID", plotId);
-        addRow(form, 2, "Crop ID", cropId);
+        addRow(form, 0, "Farmer (ID | Name)", farmer);
+        addRow(form, 1, "Plot (filtered by farmer)", plot);
+        addRow(form, 2, "Crop (ID | Name)", crop);
         addRow(form, 3, "Season", season);
 
-        VBox left = new VBox(10, form, add, advisory, delete, advisoryArea);
+        VBox left = new VBox(10, help, form, add, advisory, delete, advisoryArea);
         VBox.setVgrow(advisoryArea, Priority.ALWAYS);
 
         HBox body = new HBox(10, left, list);
@@ -538,7 +612,7 @@ public class App extends Application {
     }
 
     private Tab createMarketPricesTab() {
-        TextField cropId = new TextField();
+        ComboBox<String> crop = new ComboBox<>();
         ComboBox<District> district = new ComboBox<>();
         district.getItems().addAll(District.values());
         district.setValue(District.CHITWAN);
@@ -546,6 +620,16 @@ public class App extends Application {
         ListView<String> list = new ListView<>();
         TextArea analysis = new TextArea();
         analysis.setEditable(false);
+        Label help = sectionHelp(
+                "Use this tab to record and analyze market prices. Field help: Crop uses standard ID and name, District is market location, Price/KG is current value. Farmers can view history and district comparison.");
+
+        Runnable reloadCrops = () -> crop.getItems().setAll(cropService.all().stream()
+                .map(c -> c.getId() + " | " + c.getName())
+                .toList());
+        reloadCrops.run();
+        if (!crop.getItems().isEmpty()) {
+            crop.setValue(crop.getItems().get(0));
+        }
 
         Runnable reload = () -> list.getItems().setAll(marketPriceService.all().stream()
                 .map(p -> p.getId() + " | Crop=" + p.getCropId() + " | " + p.getDistrict() + " | " + p.getPriceDate()
@@ -556,7 +640,8 @@ public class App extends Application {
         add.setDisable(currentUser.getRole() == UserRole.FARMER);
         add.setOnAction(e -> {
             try {
-                MarketPrice p = marketPriceService.create(cropId.getText(), district.getValue(), LocalDate.now(),
+                MarketPrice p = marketPriceService.create(parseSelectedId(crop.getValue(), "Crop"), district.getValue(),
+                        LocalDate.now(),
                         Double.parseDouble(price.getText()));
                 auditService.log(currentUser.getUsername(), "CREATE_PRICE", "Added market price: " + p.getId());
                 reload.run();
@@ -567,23 +652,24 @@ public class App extends Application {
 
         Button history = new Button("Show Crop History");
         history.setOnAction(e -> {
-            List<MarketPrice> historyList = marketPriceService.historyByCrop(cropId.getText());
+            List<MarketPrice> historyList = marketPriceService.historyByCrop(parseSelectedId(crop.getValue(), "Crop"));
             analysis.setText(historyList.stream()
                     .map(h -> h.getPriceDate() + " | " + h.getDistrict() + " | " + h.getPricePerKg())
                     .collect(Collectors.joining("\n")));
         });
 
         Button compare = new Button("Compare District Prices");
-        compare.setOnAction(e -> analysis.setText(marketPriceService.compareDistricts(cropId.getText())));
+        compare.setOnAction(e -> analysis
+                .setText(marketPriceService.compareDistricts(parseSelectedId(crop.getValue(), "Crop"))));
 
         reload.run();
 
         GridPane form = basicForm();
-        addRow(form, 0, "Crop ID", cropId);
+        addRow(form, 0, "Crop (ID | Name)", crop);
         addRow(form, 1, "District", district);
         addRow(form, 2, "Price / KG", price);
 
-        VBox left = new VBox(10, form, add, history, compare, analysis);
+        VBox left = new VBox(10, help, form, add, history, compare, analysis);
         VBox.setVgrow(analysis, Priority.ALWAYS);
 
         HBox body = new HBox(10, left, list);
@@ -607,6 +693,8 @@ public class App extends Application {
         type.setValue(AlertType.GENERAL);
         TextField message = new TextField();
         TextField days = new TextField("3");
+        Label help = sectionHelp(
+                "Use this tab to publish weather warnings. Field help: District is alert target area, Severity sets urgency, Type sets category, Message is farmer-facing instruction, Active Days controls expiry window.");
 
         ListView<String> list = new ListView<>();
         Runnable reload = () -> {
@@ -624,6 +712,16 @@ public class App extends Application {
         add.setDisable(currentUser.getRole() == UserRole.FARMER);
         add.setOnAction(e -> {
             try {
+                if (currentUser.getRole() == UserRole.OFFICER) {
+                    Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+                    confirm.setHeaderText("Confirm weather alert");
+                    confirm.setContentText("Create this alert for " + district.getValue() + " with "
+                            + severity.getValue() + " severity?");
+                    if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+                        return;
+                    }
+                }
+
                 LocalDate start = LocalDate.now();
                 LocalDate end = start.plusDays(Integer.parseInt(days.getText()));
                 WeatherAlert alert = weatherAlertService.create(district.getValue(), severity.getValue(),
@@ -645,7 +743,7 @@ public class App extends Application {
         addRow(form, 3, "Message", message);
         addRow(form, 4, "Active Days", days);
 
-        VBox left = new VBox(10, form, add);
+        VBox left = new VBox(10, help, form, add);
         HBox body = new HBox(10, left, list);
         HBox.setHgrow(list, Priority.ALWAYS);
         body.setPadding(new Insets(10));
@@ -659,6 +757,8 @@ public class App extends Application {
         TextField search = new TextField();
         search.setPromptText("Filter by action/user/details");
         ListView<String> list = new ListView<>();
+        Label help = sectionHelp(
+                "Use this tab to track who performed each system action. How to use: type keywords in filter to narrow logs by user, action, or detail text.");
 
         Runnable reload = () -> list.getItems().setAll(auditService.search(search.getText()).stream()
                 .map(a -> a.getTimestamp() + " | " + a.getUsername() + " | " + a.getAction() + " | " + a.getDetails())
@@ -667,7 +767,7 @@ public class App extends Application {
         search.textProperty().addListener((obs, oldV, newV) -> reload.run());
         reload.run();
 
-        VBox body = new VBox(10, search, list);
+        VBox body = new VBox(10, help, search, list);
         body.setPadding(new Insets(10));
         VBox.setVgrow(list, Priority.ALWAYS);
 
@@ -679,6 +779,8 @@ public class App extends Application {
     private Tab createExportTab() {
         TextArea result = new TextArea();
         result.setEditable(false);
+        Label help = sectionHelp(
+                "Use this tab to export records for sharing or backup. How to use: click an export button, then check the output path shown in the result area.");
 
         Button exportFarmer = new Button("Export Farmers to exports/farmers.txt");
         exportFarmer.setOnAction(e -> {
@@ -694,7 +796,7 @@ public class App extends Application {
             result.appendText("Exported market prices: " + file + "\n");
         });
 
-        VBox body = new VBox(10, exportFarmer, exportPrices, result);
+        VBox body = new VBox(10, help, exportFarmer, exportPrices, result);
         body.setPadding(new Insets(10));
         VBox.setVgrow(result, Priority.ALWAYS);
 
@@ -713,6 +815,18 @@ public class App extends Application {
     private void addRow(GridPane form, int row, String label, javafx.scene.Node node) {
         form.add(new Label(label + ":"), 0, row);
         form.add(node, 1, row);
+    }
+
+    private Label sectionHelp(String message) {
+        Label help = new Label(message);
+        help.setWrapText(true);
+        help.setStyle("-fx-padding: 8; -fx-background-color: #F5F7FA; -fx-border-color: #D9DEE7;");
+        return help;
+    }
+
+    private String parseSelectedId(String selectedValue, String fieldName) {
+        ValidationUtil.require(!ValidationUtil.isBlank(selectedValue), fieldName + " is required.");
+        return selectedValue.split("\\|")[0].trim();
     }
 
     private void deleteSelected(ListView<String> list,
